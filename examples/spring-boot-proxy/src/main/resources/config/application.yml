@@ -1,0 +1,17 @@
+spring.profiles.active: local
+# Prevent the embedded Tomcat from opening a TCP/IP port.
+server.port: -1
+---
+spring.profiles: local
+armeria:
+  ports:
+    - port: 8080
+      protocol: HTTP
+
+backend:
+  ports:
+    - host: localhost
+      port: 8081
+    - host: localhost
+      port: 8082
+      protocol: HTTP

@@ -42,4 +42,5 @@ includeWithFlags ':site'
 
 // Examples
 includeWithFlags ':examples:annotated-http-service', 'java'
+includeWithFlags ':examples:spring-boot-proxy',     'java'
 includeWithFlags ':examples:spring-boot-tomcat',     'java'
