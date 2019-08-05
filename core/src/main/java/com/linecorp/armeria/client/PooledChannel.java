@@ -25,6 +25,7 @@ import io.netty.channel.Channel;
 abstract class PooledChannel implements ReleasableHolder<Channel> {
     private final Channel channel;
     private final SessionProtocol protocol;
+    private int activeRequest;
 
     PooledChannel(Channel channel, SessionProtocol protocol) {
         this.channel = requireNonNull(channel, "channel");
@@ -38,5 +39,13 @@ abstract class PooledChannel implements ReleasableHolder<Channel> {
 
     SessionProtocol protocol() {
         return protocol;
+    }
+
+    public int activeRequests() {
+        return activeRequest;
+    }
+
+    public void increaseActiveRequest() {
+        activeRequest++;
     }
 }

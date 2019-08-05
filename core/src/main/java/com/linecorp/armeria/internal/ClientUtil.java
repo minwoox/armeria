@@ -44,6 +44,14 @@ public final class ClientUtil {
 
         try {
             if (ctx.init(endpoint)) {
+
+            // factory..
+
+
+
+
+
+
                 return pushAndExecute(delegate, ctx);
             } else {
                 // Context initialization has failed, but we call the decorator chain anyway

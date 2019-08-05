@@ -122,6 +122,7 @@ public class DefaultClientRequestContext extends NonWrappingRequestContext imple
     public boolean init(Endpoint endpoint) {
         assert this.endpoint == null : this.endpoint;
         try {
+            final Endpoint singleEndpoint;
             if (endpoint.isGroup()) {
                 final String groupName = endpoint.groupName();
                 final EndpointSelector endpointSelector =
@@ -136,12 +137,13 @@ public class DefaultClientRequestContext extends NonWrappingRequestContext imple
                 //       so that the customizer can inject the attributes which may be required
                 //       by the EndpointSelector.
                 runThreadLocalContextCustomizer();
-                this.endpoint = endpointSelector.select(this);
+                singleEndpoint = endpointSelector.select(this);
             } else {
                 endpointSelector = null;
-                this.endpoint = endpoint;
+                singleEndpoint = endpoint;
                 runThreadLocalContextCustomizer();
             }
+            this.endpoint = singleEndpoint.withDefaultPort(sessionProtocol().defaultPort());
 
             return true;
         } catch (Exception e) {

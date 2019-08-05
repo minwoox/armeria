@@ -26,6 +26,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -35,6 +36,7 @@ import javax.annotation.Nullable;
 
 import com.google.common.collect.MapMaker;
 
+import com.linecorp.armeria.client.HttpChannelPool.PoolKey;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.RequestContext;
@@ -307,5 +309,11 @@ final class HttpClientFactory extends AbstractClientFactory {
 
         return pools.computeIfAbsent(eventLoop,
                                      e -> new HttpChannelPool(this, eventLoop, connectionPoolListener()));
+    }
+
+
+    CompletableFuture<PooledChannel> pooledChannel(Endpoint endpoint, SessionProtocol protocol) {
+
+        return null;
     }
 }
