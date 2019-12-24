@@ -385,8 +385,8 @@ interface AccessLogComponent {
         @Nullable
         @Override
         Object getMessage0(RequestLog log) {
-            final Attribute<?> value = log.context().attr(key);
-            return value != null ? stringifer.apply(value.get()) : null;
+            final Object value = log.context().attr(key);
+            return value != null ? stringifer.apply(value) : null;
         }
     }
 

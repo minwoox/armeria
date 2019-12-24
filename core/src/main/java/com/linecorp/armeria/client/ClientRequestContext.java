@@ -207,8 +207,8 @@ public interface ClientRequestContext extends RequestContext {
      * assert ctx.attr(KEY).get() == 4242;
      * }</pre>
      */
-    @Override
-    <T> Attribute<T> attr(AttributeKey<T> key);
+//    @Override
+//    <T> Attribute<T> attr(AttributeKey<T> key);
 
     /**
      * Returns the {@link Attribute} for the given {@link AttributeKey}. This method will never return
@@ -217,7 +217,7 @@ public interface ClientRequestContext extends RequestContext {
      *
      * @see #attr(AttributeKey)
      */
-    <T> Attribute<T> ownAttr(AttributeKey<T> key);
+//    <T> Attribute<T> ownAttr(AttributeKey<T> key);
 
     /**
      * Returns {@code} true if and only if the given {@link Attribute} exists.
@@ -235,8 +235,8 @@ public interface ClientRequestContext extends RequestContext {
      *
      * @see #hasOwnAttr(AttributeKey)
      */
-    @Override
-    <T> boolean hasAttr(AttributeKey<T> key);
+//    @Override
+//    <T> boolean hasAttr(AttributeKey<T> key);
 
     /**
      * Returns {@code} true if and only if the given {@link Attribute} exists.
@@ -244,7 +244,7 @@ public interface ClientRequestContext extends RequestContext {
      *
      * @see #hasAttr(AttributeKey)
      */
-    <T> boolean hasOwnAttr(AttributeKey<T> key);
+//    <T> boolean hasOwnAttr(AttributeKey<T> key);
 
     /**
      * Returns the {@link Iterator} of all {@link Attribute}s this context contains.
@@ -298,8 +298,8 @@ public interface ClientRequestContext extends RequestContext {
      * }</pre>
      * @see #ownAttrs()
      */
-    @Override
-    Iterator<Attribute<?>> attrs();
+//    @Override
+//    Iterator<Attribute<?>> attrs();
 
     /**
      * Returns the {@link Iterator} of all {@link Attribute}s this context contains.
@@ -307,7 +307,7 @@ public interface ClientRequestContext extends RequestContext {
      *
      * @see #attrs()
      */
-    Iterator<Attribute<?>> ownAttrs();
+//    Iterator<Attribute<?>> ownAttrs();
 
     /**
      * {@inheritDoc} For example, when you send an RPC request, this method will return {@code null} until

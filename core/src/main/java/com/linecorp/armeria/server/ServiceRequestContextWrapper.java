@@ -36,6 +36,8 @@ import com.linecorp.armeria.common.RequestId;
 import com.linecorp.armeria.common.RpcRequest;
 import com.linecorp.armeria.server.logging.AccessLogWriter;
 
+import io.netty.util.AttributeKey;
+
 /**
  * Wraps an existing {@link ServiceRequestContext}.
  */

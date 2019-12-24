@@ -17,7 +17,6 @@
 package com.linecorp.armeria.client;
 
 import java.time.Duration;
-import java.util.Iterator;
 import java.util.Map.Entry;
 
 import javax.annotation.Nullable;
@@ -29,9 +28,6 @@ import com.linecorp.armeria.common.RequestContextWrapper;
 import com.linecorp.armeria.common.RequestId;
 import com.linecorp.armeria.common.RpcRequest;
 import com.linecorp.armeria.server.ServiceRequestContext;
-
-import io.netty.util.Attribute;
-import io.netty.util.AttributeKey;
 
 /**
  * Wraps an existing {@link ClientRequestContext}.
@@ -50,21 +46,6 @@ public class ClientRequestContextWrapper
     @Override
     public ServiceRequestContext rootContext() {
         return delegate().rootContext();
-    }
-
-    @Override
-    public <T> Attribute<T> ownAttr(AttributeKey<T> key) {
-        return delegate().ownAttr(key);
-    }
-
-    @Override
-    public <T> boolean hasOwnAttr(AttributeKey<T> key) {
-        return delegate().hasOwnAttr(key);
-    }
-
-    @Override
-    public Iterator<Attribute<?>> ownAttrs() {
-        return delegate().ownAttrs();
     }
 
     @Override

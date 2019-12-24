@@ -23,13 +23,14 @@ import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
 import com.linecorp.armeria.internal.ArmeriaHttpUtil;
-import com.linecorp.armeria.internal.DefaultAttributeMap;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.channel.Channel;
@@ -76,10 +77,10 @@ public abstract class NonWrappingRequestContext extends AbstractRequestContext {
             MeterRegistry meterRegistry, SessionProtocol sessionProtocol,
             RequestId id, HttpMethod method, String path, @Nullable String query,
             @Nullable HttpRequest req, @Nullable RpcRequest rpcReq,
-            @Nullable AttributeMap rootMap) {
+            @Nullable RequestContext rootAttributeMap) {
 
         this.meterRegistry = requireNonNull(meterRegistry, "meterRegistry");
-        this.attrs = new DefaultAttributeMap(rootMap);
+        attrs = new DefaultAttributeMap(rootAttributeMap);
         this.sessionProtocol = requireNonNull(sessionProtocol, "sessionProtocol");
         this.id = requireNonNull(id, "id");
         this.method = requireNonNull(method, "method");
@@ -193,51 +194,86 @@ public abstract class NonWrappingRequestContext extends AbstractRequestContext {
         return meterRegistry;
     }
 
+    @Nullable
     @Override
-    public <T> Attribute<T> attr(AttributeKey<T> key) {
-        return attrs.attr(requireNonNull(key, "key"));
-    }
-
-    /**
-     * Returns the {@link Attribute} for the given {@link AttributeKey}. This method will never return
-     * {@code null}, but may return an {@link Attribute} which does not have a value set yet.
-     * Unlike {@link #attr(AttributeKey)}, this does not search in {@code rootMap}.
-     *
-     * @see #attr(AttributeKey)
-     */
-    public <T> Attribute<T> ownAttr(AttributeKey<T> key) {
-        return attrs.ownAttr(requireNonNull(key, "key"));
+    public <V> V attr(AttributeKey<V> key) {
+        requireNonNull(key, "key");
+        return attrs.attr(key);
     }
 
     @Override
-    public <T> boolean hasAttr(AttributeKey<T> key) {
-        return attrs.hasAttr(requireNonNull(key, "key"));
+    public <V> void setAttr(AttributeKey<V> key, @Nullable V value) {
+        requireNonNull(key, "key");
+        requireNonNull(value, "value");
+        attrs.setAttr(key, value);
     }
 
-    /**
-     * Returns {@code} true if and only if the given {@link Attribute} exists.
-     * Unlike {@link #hasAttr(AttributeKey)}, this does not search in {@code rootMap}.
-     *
-     * @see #hasAttr(AttributeKey)
-     */
-    public <T> boolean hasOwnAttr(AttributeKey<T> key) {
-        return attrs.hasOwnAttr(requireNonNull(key, "key"));
+    @Nullable
+    @Override
+    public <V> V setAttrIfAbsent(AttributeKey<V> key, V value) {
+        return attrs.setAttrIfAbsent(key, value);
     }
 
     @Override
-    public Iterator<Attribute<?>> attrs() {
+    public Iterator<Map.Entry<AttributeKey<?>, Object>> attrs() {
         return attrs.attrs();
     }
 
-    /**
-     * Returns the {@link Iterator} of all {@link Attribute}s this map contains.
-     * Unlike {@link #attrs()}, this does not iterate {@code rootMap}.
-     *
-     * @see #attrs()
-     */
-    public Iterator<Attribute<?>> ownAttrs() {
+    @Nullable
+    public <V> V ownAttr(AttributeKey<V> key) {
+        requireNonNull(key, "key");
+        return attrs.ownAttr(key);
+    }
+
+    public Iterator<Map.Entry<AttributeKey<?>, Object>> ownAttrs() {
         return attrs.ownAttrs();
     }
+
+//    @Override
+//    public <T> Attribute<T> attr(AttributeKey<T> key) {
+//        return attrs.attr(requireNonNull(key, "key"));
+//    }
+//
+//    /**
+//     * Returns the {@link Attribute} for the given {@link AttributeKey}. This method will never return
+//     * {@code null}, but may return an {@link Attribute} which does not have a value set yet.
+//     * Unlike {@link #attr(AttributeKey)}, this does not search in {@code rootMap}.
+//     *
+//     * @see #attr(AttributeKey)
+//     */
+//    public <T> Attribute<T> ownAttr(AttributeKey<T> key) {
+//        return attrs.ownAttr(requireNonNull(key, "key"));
+//    }
+//
+//    @Override
+//    public <T> boolean hasAttr(AttributeKey<T> key) {
+//        return attrs.hasAttr(requireNonNull(key, "key"));
+//    }
+//
+//    /**
+//     * Returns {@code} true if and only if the given {@link Attribute} exists.
+//     * Unlike {@link #hasAttr(AttributeKey)}, this does not search in {@code rootMap}.
+//     *
+//     * @see #hasAttr(AttributeKey)
+//     */
+//    public <T> boolean hasOwnAttr(AttributeKey<T> key) {
+//        return attrs.hasOwnAttr(requireNonNull(key, "key"));
+//    }
+//
+//    @Override
+//    public Iterator<Attribute<?>> attrs() {
+//        return attrs.attrs();
+//    }
+//
+//    /**
+//     * Returns the {@link Iterator} of all {@link Attribute}s this map contains.
+//     * Unlike {@link #attrs()}, this does not iterate {@code rootMap}.
+//     *
+//     * @see #attrs()
+//     */
+//    public Iterator<Attribute<?>> ownAttrs() {
+//        return attrs.ownAttrs();
+//    }
 
     @Override
     public final void onEnter(Consumer<? super RequestContext> callback) {

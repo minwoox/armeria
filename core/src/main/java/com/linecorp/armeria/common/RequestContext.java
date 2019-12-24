@@ -18,6 +18,8 @@ package com.linecorp.armeria.common;
 
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -48,7 +50,7 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.EventLoop;
 import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.util.Attribute;
+import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.ReferenceCounted;
 import io.netty.util.concurrent.Future;
@@ -61,7 +63,7 @@ import io.netty.util.concurrent.Promise;
  * A server-side {@link Request} has a {@link ServiceRequestContext} and
  * a client-side {@link Request} has a {@link ClientRequestContext}.
  */
-public interface RequestContext extends AttributeMap {
+public interface RequestContext {
 
     /**
      * Returns the context of the {@link Request} that is being handled in the current thread.
@@ -109,6 +111,16 @@ public interface RequestContext extends AttributeMap {
 
         return null;
     }
+
+    @Nullable
+    <V> V attr(AttributeKey<V> key);
+
+    <V> void setAttr(AttributeKey<V> key, @Nullable V value);
+
+    @Nullable
+    <V> V setAttrIfAbsent(AttributeKey<V> key, V value);
+
+    Iterator<Map.Entry<AttributeKey<?>, Object>> attrs();
 
     /**
      * Returns the {@link HttpRequest} associated with this context, or {@code null} if there's no
@@ -647,7 +659,7 @@ public interface RequestContext extends AttributeMap {
     }
 
     /**
-     * Creates a new {@link RequestContext} whose properties and {@link Attribute}s are copied from this
+     * Creates a new {@link RequestContext} whose properties and {@link #attrs()} are copied from this
      * {@link RequestContext}, except having a different pair of {@link HttpRequest} and {@link RpcRequest}
      * and its own {@link RequestLog}.
      */

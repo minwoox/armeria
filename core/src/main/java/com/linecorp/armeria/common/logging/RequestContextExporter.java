@@ -521,11 +521,9 @@ public final class RequestContextExporter {
         for (ExportEntry<AttributeKey<?>> e : attrs) {
             final AttributeKey<?> attrKey = e.key;
             final String exportKey = e.exportKey;
-            if (ctx.hasAttr(attrKey)) {
-                final Object value = ctx.attr(attrKey).get();
-                if (value != null) {
-                    out.put(exportKey, e.stringify(value));
-                }
+            final Object value = ctx.attr(attrKey);
+            if (value != null) {
+                out.put(exportKey, e.stringify(value));
             }
         }
     }
@@ -606,11 +604,11 @@ public final class RequestContextExporter {
     }
 
     private static State state(RequestContext ctx) {
-        final Attribute<State> attr = ctx.attr(STATE);
-        final State state = attr.get();
+        final State state = ctx.attr(STATE);
         if (state == null) {
+            ctx.setAttr(STATE, new State());
             final State newState = new State();
-            final State oldState = attr.setIfAbsent(newState);
+            final State oldState = ctx.setAttrIfAbsent(STATE, newState);
             if (oldState != null) {
                 return oldState;
             } else {
