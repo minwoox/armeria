@@ -31,6 +31,7 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
+import com.linecorp.armeria.internal.server.DependencyInjectorManager;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedServiceElement;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedServiceExtensions;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedServiceFactory;
@@ -269,10 +270,11 @@ public final class AnnotatedServiceBindingBuilder implements ServiceConfigSetter
     /**
      * Builds the {@link ServiceConfigBuilder}s created with the configured
      * {@link AnnotatedServiceExtensions} to the {@link ServerBuilder}.
-     *
-     * @param extensions the {@link AnnotatedServiceExtensions} at the server level.
+     *  @param extensions the {@link AnnotatedServiceExtensions} at the server level.
+     * @param dependencyInjectorManager
      */
-    List<ServiceConfigBuilder> buildServiceConfigBuilder(AnnotatedServiceExtensions extensions) {
+    List<ServiceConfigBuilder> buildServiceConfigBuilder(AnnotatedServiceExtensions extensions,
+                                                         DependencyInjectorManager dependencyInjectorManager) {
         final List<RequestConverterFunction> requestConverterFunctions =
                 requestConverterFunctionBuilder.addAll(extensions.requestConverters()).build();
         final List<ResponseConverterFunction> responseConverterFunctions =
@@ -285,7 +287,7 @@ public final class AnnotatedServiceBindingBuilder implements ServiceConfigSetter
         final List<AnnotatedServiceElement> elements =
                 AnnotatedServiceFactory.find(pathPrefix, service, useBlockingTaskExecutor,
                                              requestConverterFunctions, responseConverterFunctions,
-                                             exceptionHandlerFunctions);
+                                             exceptionHandlerFunctions, dependencyInjectorManager);
         return elements.stream().map(element -> {
             final HttpService decoratedService =
                     element.buildSafeDecoratedService(defaultServiceConfigSetters.decorator());

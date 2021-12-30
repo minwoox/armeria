@@ -24,17 +24,14 @@ import static com.linecorp.armeria.internal.server.RouteUtil.ensureAbsolutePath;
 import static com.linecorp.armeria.internal.server.annotation.ProcessedDocumentationHelper.getFileName;
 import static java.util.Objects.requireNonNull;
 import static org.reflections.ReflectionUtils.getAllMethods;
-import static org.reflections.ReflectionUtils.getConstructors;
 import static org.reflections.ReflectionUtils.getMethods;
 import static org.reflections.ReflectionUtils.withModifier;
 import static org.reflections.ReflectionUtils.withName;
-import static org.reflections.ReflectionUtils.withParametersCount;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -66,6 +63,7 @@ import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.MapMaker;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
 
@@ -76,6 +74,7 @@ import com.linecorp.armeria.common.HttpMethod;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.annotation.Nullable;
+import com.linecorp.armeria.internal.server.DependencyInjectorManager;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedValueResolver.NoParameterException;
 import com.linecorp.armeria.internal.server.annotation.AnnotationUtil.FindOption;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
@@ -131,17 +130,19 @@ public final class AnnotatedServiceFactory {
     /**
      * An instance map for reusing converters, exception handlers and decorators.
      */
-    private static final ClassValue<Object> instanceCache = new ClassValue<Object>() {
-        @Override
-        protected Object computeValue(Class<?> type) {
-            try {
-                return getInstance0(type);
-            } catch (Exception e) {
-                throw new IllegalStateException("A class must have an accessible default constructor: " +
-                                                type.getName(), e);
-            }
-        }
-    };
+    private static final Map<Class<?>, Object> instanceCache = new MapMaker().weakKeys().makeMap();
+
+//    private static final ClassValue<Object> instanceCache = new ClassValue<Object>() {
+//        @Override
+//        protected Object computeValue(Class<?> type) {
+//            try {
+//                return getInstance0(type);
+//            } catch (Exception e) {
+//                throw new IllegalStateException("A class must have an accessible default constructor: " +
+//                                                type.getName(), e);
+//            }
+//        }
+//    };
 
     /**
      * Mapping from HTTP method annotation to {@link HttpMethod}, like following.
@@ -158,15 +159,15 @@ public final class AnnotatedServiceFactory {
      */
     private static final Map<Class<?>, HttpMethod> HTTP_METHOD_MAP =
             ImmutableMap.<Class<?>, HttpMethod>builder()
-                    .put(Options.class, HttpMethod.OPTIONS)
-                    .put(Get.class, HttpMethod.GET)
-                    .put(Head.class, HttpMethod.HEAD)
-                    .put(Post.class, HttpMethod.POST)
-                    .put(Put.class, HttpMethod.PUT)
-                    .put(Patch.class, HttpMethod.PATCH)
-                    .put(Delete.class, HttpMethod.DELETE)
-                    .put(Trace.class, HttpMethod.TRACE)
-                    .build();
+                        .put(Options.class, HttpMethod.OPTIONS)
+                        .put(Get.class, HttpMethod.GET)
+                        .put(Head.class, HttpMethod.HEAD)
+                        .put(Post.class, HttpMethod.POST)
+                        .put(Put.class, HttpMethod.PUT)
+                        .put(Patch.class, HttpMethod.PATCH)
+                        .put(Delete.class, HttpMethod.DELETE)
+                        .put(Trace.class, HttpMethod.TRACE)
+                        .build();
 
     /**
      * Returns the list of {@link AnnotatedService} defined by {@link Path} and HTTP method annotations
@@ -177,13 +178,14 @@ public final class AnnotatedServiceFactory {
             String pathPrefix, Object object, boolean useBlockingTaskExecutor,
             List<RequestConverterFunction> requestConverterFunctions,
             List<ResponseConverterFunction> responseConverterFunctions,
-            List<ExceptionHandlerFunction> exceptionHandlerFunctions) {
+            List<ExceptionHandlerFunction> exceptionHandlerFunctions,
+            DependencyInjectorManager dependencyInjectorManager) {
         final List<Method> methods = requestMappingMethods(object);
         return methods.stream()
                       .flatMap((Method method) ->
                                        create(pathPrefix, object, method, useBlockingTaskExecutor,
                                               requestConverterFunctions, responseConverterFunctions,
-                                              exceptionHandlerFunctions).stream())
+                                              exceptionHandlerFunctions, dependencyInjectorManager).stream())
                       .collect(toImmutableList());
     }
 
@@ -240,8 +242,8 @@ public final class AnnotatedServiceFactory {
                                                 boolean useBlockingTaskExecutor,
                                                 List<RequestConverterFunction> baseRequestConverters,
                                                 List<ResponseConverterFunction> baseResponseConverters,
-                                                List<ExceptionHandlerFunction> baseExceptionHandlers) {
-
+                                                List<ExceptionHandlerFunction> baseExceptionHandlers,
+                                                DependencyInjectorManager dependencyInjectorManager) {
         if (KotlinUtil.getCallKotlinSuspendingMethod() == null && KotlinUtil.maybeSuspendingFunction(method)) {
             throw new IllegalArgumentException(
                     "Kotlin suspending functions are supported " +
@@ -282,13 +284,16 @@ public final class AnnotatedServiceFactory {
                 }).collect(toImmutableList());
 
         final List<RequestConverterFunction> req =
-                getAnnotatedInstances(method, clazz, RequestConverter.class, RequestConverterFunction.class)
+                getAnnotatedInstances(method, clazz, RequestConverter.class, RequestConverterFunction.class,
+                                      dependencyInjectorManager)
                         .addAll(baseRequestConverters).build();
         final List<ResponseConverterFunction> res =
-                getAnnotatedInstances(method, clazz, ResponseConverter.class, ResponseConverterFunction.class)
+                getAnnotatedInstances(method, clazz, ResponseConverter.class, ResponseConverterFunction.class,
+                                      dependencyInjectorManager)
                         .addAll(baseResponseConverters).build();
         final List<ExceptionHandlerFunction> eh =
-                getAnnotatedInstances(method, clazz, ExceptionHandler.class, ExceptionHandlerFunction.class)
+                getAnnotatedInstances(method, clazz, ExceptionHandler.class, ExceptionHandlerFunction.class,
+                                      dependencyInjectorManager)
                         .addAll(baseExceptionHandlers).build();
 
         final HttpStatus defaultStatus = defaultResponseStatus(method);
@@ -327,7 +332,7 @@ public final class AnnotatedServiceFactory {
                     route,
                     new AnnotatedService(object, method, resolvers, eh, res, route, defaultStatus,
                                          responseHeaders, responseTrailers, needToUseBlockingTaskExecutor),
-                    decorator(method, clazz));
+                    decorator(method, clazz, dependencyInjectorManager));
         }).collect(toImmutableList());
     }
 
@@ -534,7 +539,7 @@ public final class AnnotatedServiceFactory {
                          .filter(annotation -> HTTP_METHOD_MAP.containsKey(annotation.annotationType()))
                          .forEach(annotation -> {
                              final HttpMethod httpMethod = HTTP_METHOD_MAP.get(annotation.annotationType());
-                             final String value = (String) invokeValueMethod(annotation);
+                             final String value = (String) invokeAnnotationMethod(annotation, "value");
                              final List<String> patterns = httpMethodPatternMap
                                      .computeIfAbsent(httpMethod, ignored -> new ArrayList<>());
                              if (DefaultValues.isSpecified(value)) {
@@ -549,9 +554,9 @@ public final class AnnotatedServiceFactory {
      * decorator annotations.
      */
     private static Function<? super HttpService, ? extends HttpService> decorator(
-            Method method, Class<?> clazz) {
+            Method method, Class<?> clazz, DependencyInjectorManager dependencyInjectorManager) {
 
-        final List<DecoratorAndOrder> decorators = collectDecorators(clazz, method);
+        final List<DecoratorAndOrder> decorators = collectDecorators(clazz, method, dependencyInjectorManager);
 
         Function<? super HttpService, ? extends HttpService> decorator = Function.identity();
         for (int i = decorators.size() - 1; i >= 0; i--) {
@@ -566,12 +571,13 @@ public final class AnnotatedServiceFactory {
      * decorator annotations.
      */
     @VisibleForTesting
-    static List<DecoratorAndOrder> collectDecorators(Class<?> clazz, Method method) {
+    static List<DecoratorAndOrder> collectDecorators(Class<?> clazz, Method method,
+                                                     DependencyInjectorManager dependencyInjectorManager) {
         final List<DecoratorAndOrder> decorators = new ArrayList<>();
 
         // Class-level decorators are applied before method-level decorators.
-        collectDecorators(decorators, AnnotationUtil.getAllAnnotations(clazz));
-        collectDecorators(decorators, AnnotationUtil.getAllAnnotations(method));
+        collectDecorators(decorators, AnnotationUtil.getAllAnnotations(clazz), dependencyInjectorManager);
+        collectDecorators(decorators, AnnotationUtil.getAllAnnotations(method), dependencyInjectorManager);
 
         // Sort decorators by "order" attribute values.
         decorators.sort(Comparator.comparing(DecoratorAndOrder::order));
@@ -583,7 +589,8 @@ public final class AnnotatedServiceFactory {
      * Adds decorators to the specified {@code list}. Decorators which are annotated with {@link Decorator}
      * and user-defined decorators will be collected.
      */
-    private static void collectDecorators(List<DecoratorAndOrder> list, List<Annotation> annotations) {
+    private static void collectDecorators(List<DecoratorAndOrder> list, List<Annotation> annotations,
+                                          DependencyInjectorManager dependencyInjectorManager) {
         if (annotations.isEmpty()) {
             return;
         }
@@ -596,19 +603,19 @@ public final class AnnotatedServiceFactory {
         for (final Annotation annotation : annotations) {
             if (annotation instanceof Decorator) {
                 final Decorator d = (Decorator) annotation;
-                list.add(new DecoratorAndOrder(d, newDecorator(d), d.order()));
+                list.add(new DecoratorAndOrder(d, newDecorator(d, dependencyInjectorManager), d.order()));
                 continue;
             }
 
             if (annotation instanceof Decorators) {
                 final Decorator[] decorators = ((Decorators) annotation).value();
                 for (final Decorator d : decorators) {
-                    list.add(new DecoratorAndOrder(d, newDecorator(d), d.order()));
+                    list.add(new DecoratorAndOrder(d, newDecorator(d, dependencyInjectorManager), d.order()));
                 }
                 continue;
             }
 
-            DecoratorAndOrder udd = userDefinedDecorator(annotation);
+            DecoratorAndOrder udd = userDefinedDecorator(annotation, dependencyInjectorManager);
             if (udd != null) {
                 list.add(udd);
                 continue;
@@ -621,7 +628,7 @@ public final class AnnotatedServiceFactory {
                 assert method != null : "No 'value' method is found from " + annotation;
                 final Annotation[] decorators = (Annotation[]) method.invoke(annotation);
                 for (final Annotation decorator : decorators) {
-                    udd = userDefinedDecorator(decorator);
+                    udd = userDefinedDecorator(decorator, dependencyInjectorManager);
                     if (udd == null) {
                         break;
                     }
@@ -639,7 +646,8 @@ public final class AnnotatedServiceFactory {
      * decorator annotation.
      */
     @Nullable
-    private static DecoratorAndOrder userDefinedDecorator(Annotation annotation) {
+    private static DecoratorAndOrder userDefinedDecorator(Annotation annotation,
+                                                          DependencyInjectorManager dependencyInjectorManager) {
         // User-defined decorator MUST be annotated with @DecoratorFactory annotation.
         final DecoratorFactory d = AnnotationUtil.findFirstDeclared(annotation.annotationType(),
                                                                     DecoratorFactory.class);
@@ -649,7 +657,8 @@ public final class AnnotatedServiceFactory {
 
         // In case of user-defined decorator, we need to create a new decorator from its factory.
         @SuppressWarnings("unchecked")
-        final DecoratorFactoryFunction<Annotation> factory = getInstance(d, DecoratorFactoryFunction.class);
+        final DecoratorFactoryFunction<Annotation> factory = getInstance(d, DecoratorFactoryFunction.class,
+                                                                         dependencyInjectorManager);
 
         // If the annotation has "order" attribute, we can use it when sorting decorators.
         int order = 0;
@@ -673,8 +682,11 @@ public final class AnnotatedServiceFactory {
      * Returns a new decorator which decorates an {@link HttpService} by the specified
      * {@link Decorator}.
      */
-    private static Function<? super HttpService, ? extends HttpService> newDecorator(Decorator decorator) {
-        return service -> service.decorate(getInstance(decorator, DecoratingHttpServiceFunction.class));
+    private static Function<? super HttpService, ? extends HttpService> newDecorator(
+            Decorator decorator, DependencyInjectorManager dependencyInjectorManager) {
+        final DecoratingHttpServiceFunction decoratingFunction =
+                getInstance(decorator, DecoratingHttpServiceFunction.class, dependencyInjectorManager);
+        return service -> service.decorate(decoratingFunction);
     }
 
     /**
@@ -683,11 +695,12 @@ public final class AnnotatedServiceFactory {
      * collected respectively.
      */
     private static <T extends Annotation, R> Builder<R> getAnnotatedInstances(
-            AnnotatedElement method, AnnotatedElement clazz, Class<T> annotationType, Class<R> resultType) {
+            AnnotatedElement method, AnnotatedElement clazz, Class<T> annotationType, Class<R> resultType,
+            DependencyInjectorManager dependencyInjectorManager) {
         final Builder<R> builder = new Builder<>();
         Stream.concat(AnnotationUtil.findAll(method, annotationType).stream(),
                       AnnotationUtil.findAll(clazz, annotationType).stream())
-              .forEach(annotation -> builder.add(getInstance(annotation, resultType)));
+              .forEach(annotation -> builder.add(getInstance(annotation, resultType, dependencyInjectorManager)));
         return builder;
     }
 
@@ -695,11 +708,13 @@ public final class AnnotatedServiceFactory {
      * Returns a cached instance of the specified {@link Class} which is specified in the given
      * {@link Annotation}.
      */
-    static <T> T getInstance(Annotation annotation, Class<T> expectedType) {
+    static <T> T getInstance(Annotation annotation, Class<T> expectedType,
+                             DependencyInjectorManager dependencyInjectorManager) {
+        @SuppressWarnings("unchecked")
+        final Class<? extends T> clazz = (Class<? extends T>) invokeAnnotationMethod(annotation, "value");
+        final boolean singleton = (boolean) invokeAnnotationMethod(annotation, "singleton");
         try {
-            @SuppressWarnings("unchecked")
-            final Class<? extends T> clazz = (Class<? extends T>) invokeValueMethod(annotation);
-            return expectedType.cast(instanceCache.get(clazz));
+            return expectedType.cast(dependencyInjectorManager.getInstance(clazz, singleton));
         } catch (ClassCastException e) {
             throw new IllegalArgumentException(
                     "A class specified in @" + annotation.annotationType().getSimpleName() +
@@ -716,26 +731,15 @@ public final class AnnotatedServiceFactory {
         return casted;
     }
 
-    private static <T> T getInstance0(Class<? extends T> clazz) throws Exception {
-        @SuppressWarnings("unchecked")
-        final Constructor<? extends T> constructor =
-                Iterables.getFirst(getConstructors(clazz, withParametersCount(0)), null);
-        assert constructor != null : "No default constructor is found from " + clazz.getName();
-        constructor.setAccessible(true);
-        return constructor.newInstance();
-    }
-
-    /**
-     * Returns an object which is returned by {@code value()} method of the specified annotation {@code a}.
-     */
-    private static Object invokeValueMethod(Annotation a) {
+    private static Object invokeAnnotationMethod(Annotation a, String methodName) {
         try {
-            final Method method = Iterables.getFirst(getMethods(a.annotationType(), withName("value")), null);
-            assert method != null : "No 'value' method is found from " + a;
+            final Method method = Iterables.getFirst(getMethods(a.annotationType(), withName(methodName)),
+                                                     null);
+            assert method != null : "No '" + methodName + "' method is found from " + a;
             return method.invoke(a);
         } catch (Exception e) {
             throw new IllegalStateException("An annotation @" + a.annotationType().getSimpleName() +
-                                            " must have a 'value' method", e);
+                                            " must have a '" + methodName + "' method", e);
         }
     }
 

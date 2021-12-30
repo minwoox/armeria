@@ -68,6 +68,7 @@ import com.linecorp.armeria.common.util.BlockingTaskExecutor;
 import com.linecorp.armeria.common.util.SystemInfo;
 import com.linecorp.armeria.internal.common.util.SelfSignedCertificate;
 import com.linecorp.armeria.internal.common.util.SslContextUtil;
+import com.linecorp.armeria.internal.server.DependencyInjectorManager;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedServiceExtensions;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.RequestConverterFunction;
@@ -954,7 +955,7 @@ public final class VirtualHostBuilder {
      * Returns a newly-created {@link VirtualHost} based on the properties of this builder and the services
      * added to this builder.
      */
-    VirtualHost build(VirtualHostBuilder template) {
+    VirtualHost build(VirtualHostBuilder template, DependencyInjectorManager dependencyInjectorManager) {
         requireNonNull(template, "template");
 
         if (defaultHostname == null) {
@@ -1028,10 +1029,10 @@ public final class VirtualHostBuilder {
                 .flatMap(cfgSetters -> {
                     if (cfgSetters instanceof VirtualHostAnnotatedServiceBindingBuilder) {
                         return ((VirtualHostAnnotatedServiceBindingBuilder) cfgSetters)
-                                .buildServiceConfigBuilder(extensions).stream();
+                                .buildServiceConfigBuilder(extensions, dependencyInjectorManager).stream();
                     } else if (cfgSetters instanceof AnnotatedServiceBindingBuilder) {
                         return ((AnnotatedServiceBindingBuilder) cfgSetters)
-                                .buildServiceConfigBuilder(extensions).stream();
+                                .buildServiceConfigBuilder(extensions, dependencyInjectorManager).stream();
                     } else if (cfgSetters instanceof ServiceConfigBuilder) {
                         return Stream.of((ServiceConfigBuilder) cfgSetters);
                     } else {

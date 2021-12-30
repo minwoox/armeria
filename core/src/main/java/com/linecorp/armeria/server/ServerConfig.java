@@ -42,6 +42,7 @@ import com.linecorp.armeria.common.Request;
 import com.linecorp.armeria.common.RequestId;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.common.util.BlockingTaskExecutor;
+import com.linecorp.armeria.internal.server.DependencyInjectorManager;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
@@ -117,6 +118,7 @@ public final class ServerConfig {
 
     @Nullable
     private final Mapping<String, SslContext> sslContexts;
+    private final DependencyInjectorManager dependencyInjectorManager;
 
     @Nullable
     private String strVal;
@@ -143,7 +145,8 @@ public final class ServerConfig {
             Supplier<? extends RequestId> requestIdGenerator,
             ServerErrorHandler errorHandler,
             @Nullable Mapping<String, SslContext> sslContexts,
-            Http1HeaderNaming http1HeaderNaming) {
+            Http1HeaderNaming http1HeaderNaming,
+            DependencyInjectorManager dependencyInjectorManager) {
         requireNonNull(ports, "ports");
         requireNonNull(defaultVirtualHost, "defaultVirtualHost");
         requireNonNull(virtualHosts, "virtualHosts");
@@ -257,6 +260,7 @@ public final class ServerConfig {
         this.errorHandler = requireNonNull(errorHandler, "errorHandler");
         this.sslContexts = sslContexts;
         this.http1HeaderNaming = requireNonNull(http1HeaderNaming, "http1HeaderNaming");
+        this.dependencyInjectorManager = dependencyInjectorManager;
     }
 
     private static Int2ObjectMap<Mapping<String, VirtualHost>> buildDomainAndPortMapping(
@@ -754,6 +758,10 @@ public final class ServerConfig {
      */
     public Http1HeaderNaming http1HeaderNaming() {
         return http1HeaderNaming;
+    }
+
+    DependencyInjectorManager dependencyInjectorManager() {
+        return dependencyInjectorManager;
     }
 
     @Override

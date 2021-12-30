@@ -74,6 +74,7 @@ import com.linecorp.armeria.common.util.EventLoopGroups;
 import com.linecorp.armeria.common.util.SystemInfo;
 import com.linecorp.armeria.internal.common.RequestContextUtil;
 import com.linecorp.armeria.internal.common.util.ChannelUtil;
+import com.linecorp.armeria.internal.server.DependencyInjectorManager;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedServiceExtensions;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.RequestConverterFunction;
@@ -197,6 +198,8 @@ public final class ServerBuilder {
     private boolean enableDateHeader = true;
     private Supplier<? extends RequestId> requestIdGenerator = RequestId::random;
     private Http1HeaderNaming http1HeaderNaming = Http1HeaderNaming.ofDefault();
+    @Nullable
+    private DependencyInjector dependencyInjector;
 
     ServerBuilder() {
         // Set the default host-level properties.
@@ -1142,6 +1145,16 @@ public final class ServerBuilder {
         return service(serviceWithRoutes, ImmutableList.copyOf(requireNonNull(decorators, "decorators")));
     }
 
+    public ServerBuilder dependencyInjector(DependencyInjector dependencyInjector) {
+        requireNonNull(dependencyInjector, "dependencyInjector");
+        if (this.dependencyInjector != null) {
+            this.dependencyInjector = this.dependencyInjector.orElse(dependencyInjector);
+        } else {
+            this.dependencyInjector = dependencyInjector;
+        }
+        return this;
+    }
+
     /**
      * Binds the specified annotated service object under the path prefix {@code "/"}.
      */
@@ -1702,16 +1715,19 @@ public final class ServerBuilder {
     }
 
     private ServerConfig buildServerConfig(List<ServerPort> serverPorts) {
+        final DependencyInjectorManager dependencyInjectorManager =
+                new DependencyInjectorManager(dependencyInjector);
+
         final AnnotatedServiceExtensions extensions =
                 virtualHostTemplate.annotatedServiceExtensions();
 
         assert extensions != null;
 
         final VirtualHost defaultVirtualHost =
-                defaultVirtualHostBuilder.build(virtualHostTemplate);
+                defaultVirtualHostBuilder.build(virtualHostTemplate, dependencyInjectorManager);
         final List<VirtualHost> virtualHosts =
                 virtualHostBuilders.stream()
-                                   .map(vhb -> vhb.build(virtualHostTemplate))
+                                   .map(vhb -> vhb.build(virtualHostTemplate, dependencyInjectorManager))
                                    .collect(toImmutableList());
         // Pre-populate the domain name mapping for later matching.
         final Mapping<String, SslContext> sslContexts;
@@ -1821,7 +1837,7 @@ public final class ServerBuilder {
                 meterRegistry, proxyProtocolMaxTlvSize, channelOptions, newChildChannelOptions,
                 clientAddressSources, clientAddressTrustedProxyFilter, clientAddressFilter, clientAddressMapper,
                 enableServerHeader, enableDateHeader, requestIdGenerator, errorHandler, sslContexts,
-                http1HeaderNaming);
+                http1HeaderNaming, dependencyInjectorManager);
     }
 
     /**

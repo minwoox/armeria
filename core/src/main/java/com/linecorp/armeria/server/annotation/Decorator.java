@@ -40,6 +40,8 @@ public @interface Decorator {
      */
     Class<? extends DecoratingHttpServiceFunction> value();
 
+    boolean singleton() default true;
+
     /**
      * The order of decoration, where a {@link Decorator} of lower value will be applied first.
      */

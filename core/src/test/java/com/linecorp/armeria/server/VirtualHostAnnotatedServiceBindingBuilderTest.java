@@ -38,6 +38,7 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.SessionProtocol;
+import com.linecorp.armeria.internal.server.DependencyInjectorManager;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
@@ -98,7 +99,7 @@ class VirtualHostAnnotatedServiceBindingBuilderTest {
                 .defaultServiceName(defaultServiceName)
                 .defaultLogName(defaultLogName)
                 .build(new TestService())
-                .build(template);
+                .build(template, new DependencyInjectorManager(null));
 
         assertThat(virtualHost.serviceConfigs()).hasSize(2);
         final ServiceConfig pathBar = virtualHost.serviceConfigs().get(0);

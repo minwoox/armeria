@@ -18,8 +18,12 @@ package com.linecorp.armeria.internal.server.annotation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.lang.reflect.Constructor;
+import java.util.Set;
+
 import org.junit.ClassRule;
 import org.junit.Test;
+import org.reflections.ReflectionUtils;
 
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
@@ -47,14 +51,15 @@ public class AnnotatedServiceDecorationTest {
     public static final ServerRule rule = new ServerRule() {
         @Override
         protected void configure(ServerBuilder sb) throws Exception {
-            sb.annotatedService("/1", new MyDecorationService1());
-            sb.annotatedService("/2", new MyDecorationService2());
-            sb.annotatedService("/3", new MyDecorationService3());
-            sb.annotatedService("/4", new MyDecorationService4());
+//            sb.annotatedService("/1", new MyDecorationService1());
+//            sb.annotatedService("/2", new MyDecorationService2());
+//            sb.annotatedService("/3", new MyDecorationService3());
+//            sb.annotatedService("/4", new MyDecorationService4());
+            sb.annotatedService("/5", new MyDecorationService5());
         }
     };
 
-    @LoggingDecorator(requestLogLevel = LogLevel.INFO, successfulResponseLogLevel = LogLevel.INFO)
+//    @LoggingDecorator(requestLogLevel = LogLevel.INFO, successfulResponseLogLevel = LogLevel.INFO)
     @ResponseConverter(UnformattedStringConverterFunction.class)
     public static class MyDecorationService1 {
 
@@ -127,7 +132,52 @@ public class AnnotatedServiceDecorationTest {
         }
     }
 
+    public static class MyDecorationService5 {
+
+        @Get("/tooManyRequests")
+//        @Decorator(OneParameterConstructorDecorator.class)
+        public HttpResponse foo(ServiceRequestContext ctx, HttpRequest req) {
+            AnnotatedServiceTest.validateContextAndRequest(ctx, req);
+            return HttpResponse.of(200);
+        }
+    }
+
+    private static class ConstructorParameter {
+
+    }
+
+    private static class OneParameterConstructorDecorator implements DecoratingHttpServiceFunction {
+
+        private final ConstructorParameter parameter;
+
+        OneParameterConstructorDecorator(ConstructorParameter parameter, Long a, Integer b, int c) {
+            this.parameter = parameter;
+        }
+
+        @Override
+        public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
+                throws Exception {
+            return delegate.serve(ctx, req);
+        }
+    }
+
     public static final class AlwaysTooManyRequestsDecorator implements DecoratingHttpServiceFunction {
+
+        private Long l;
+
+//        public AlwaysTooManyRequestsDecorator(Long l) {
+//
+//            this.l = l;
+//        }
+
+        AlwaysTooManyRequestsDecorator(Integer l) {
+            this.l = (long)l;
+        }
+
+//        private AlwaysTooManyRequestsDecorator(double l) {
+//            this.l = (long)l;
+//        }
+
 
         @Override
         public HttpResponse serve(
@@ -155,6 +205,17 @@ public class AnnotatedServiceDecorationTest {
             AnnotatedServiceTest.validateContextAndRequest(ctx, req);
             return delegate.serve(ctx, req);
         }
+    }
+
+    @Test
+    public void foo() {
+        final Set<Constructor> constructors = ReflectionUtils.getConstructors(
+                OneParameterConstructorDecorator.class);
+        System.err.println(constructors.size());
+        constructors.forEach(c -> {
+            System.err.println(c);
+            System.err.println(c.getParameterTypes().length);
+        });
     }
 
     @Test

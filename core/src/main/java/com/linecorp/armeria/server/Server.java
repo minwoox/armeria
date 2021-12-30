@@ -622,6 +622,8 @@ public final class Server implements ListenableAsyncCloseable {
 
             shutdownExecutor(executors);
 
+            config.dependencyInjectorManager().close();
+
             final Builder<AccessLogWriter> builder = ImmutableSet.builder();
             config.virtualHosts()
                   .stream()
