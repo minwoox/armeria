@@ -103,6 +103,17 @@ public interface RequestTarget {
     String path();
 
     /**
+     * Returns the path of this {@link RequestTarget}, which always starts with {@code '/'}.
+     * Unlike {@link #path()}, the returned string contains matrix variables it the original request path
+     * contains.
+     *
+     * @see <a href="https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-methods/matrix-variables.html">
+     *      Matrix Variables</a>
+     */
+    @Nullable
+    String pathWithMatrixVariables();
+
+    /**
      * Returns the query of this {@link RequestTarget}.
      */
     @Nullable

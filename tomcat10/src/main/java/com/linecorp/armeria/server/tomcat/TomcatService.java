@@ -59,6 +59,7 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpResponseWriter;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.RequestTarget;
 import com.linecorp.armeria.common.ResponseHeaders;
 import com.linecorp.armeria.common.ResponseHeadersBuilder;
 import com.linecorp.armeria.common.annotation.Nullable;
@@ -378,6 +379,13 @@ public abstract class TomcatService implements HttpService {
             return HttpResponse.of(HttpStatus.SERVICE_UNAVAILABLE);
         }
 
+        final String mappedPath = mappedPath(ctx);
+        if (mappedPath == null) {
+            return HttpResponse.of(HttpStatus.BAD_REQUEST, MediaType.PLAIN_TEXT_UTF_8,
+                                   "Invalid matrix variable: " +
+                                   ctx.routingContext().requestTarget().pathWithMatrixVariables());
+        }
+
         final HttpResponseWriter res = HttpResponse.streaming();
         req.aggregate().handle((aReq, cause) -> {
             try {
@@ -396,7 +404,7 @@ public abstract class TomcatService implements HttpService {
                 }
 
                 final ArmeriaProcessor processor = createProcessor(coyoteAdapter);
-                final Request coyoteReq = convertRequest(ctx, aReq, processor.getRequest());
+                final Request coyoteReq = convertRequest(ctx, mappedPath, aReq, processor.getRequest());
                 if (coyoteReq == null) {
                     if (res.tryWrite(INVALID_AUTHORITY_HEADERS)) {
                         if (res.tryWrite(INVALID_AUTHORITY_DATA)) {
@@ -462,6 +470,29 @@ public abstract class TomcatService implements HttpService {
         }
     }
 
+    @Nullable
+    private static String mappedPath(ServiceRequestContext ctx) {
+        final RequestTarget requestTarget = ctx.routingContext().requestTarget();
+        final String pathWithMatrixVariables = requestTarget.pathWithMatrixVariables();
+        assert pathWithMatrixVariables != null;
+        if (pathWithMatrixVariables.equals(ctx.path())) {
+            return ctx.mappedPath();
+        }
+        // The request path contains matrix variables. e.g. "/prefix/foo/users;name=alice"
+
+        final String prefix = ctx.path().substring(0, ctx.path().length() - ctx.mappedPath().length());
+        if (!pathWithMatrixVariables.startsWith(prefix)) {
+            // The request path has matrix variables in the wrong place. e.g. "/prefix;name=alice/foo/users"
+            return null;
+        }
+        final String mappedPath = pathWithMatrixVariables.substring(prefix.length());
+        if (mappedPath.charAt(0) != '/') {
+            // Again, the request path has matrix variables in the wrong place. e.g. "/prefix/foo;/users"
+            return null;
+        }
+        return mappedPath;
+    }
+
     private static ArmeriaProcessor createProcessor(Adapter coyoteAdapter) throws Throwable {
         if (TomcatVersion.major() >= 9) {
             return (ArmeriaProcessor) PROCESSOR_CONSTRUCTOR.invoke(coyoteAdapter);
@@ -471,10 +502,8 @@ public abstract class TomcatService implements HttpService {
     }
 
     @Nullable
-    private Request convertRequest(ServiceRequestContext ctx, AggregatedHttpRequest req,
+    private Request convertRequest(ServiceRequestContext ctx, String mappedPath, AggregatedHttpRequest req,
                                    Request coyoteReq) throws Throwable {
-        final String mappedPath = ctx.mappedPath();
-
         coyoteReq.scheme().setString(req.scheme());
 
         // Set the start time which is used by Tomcat access logging

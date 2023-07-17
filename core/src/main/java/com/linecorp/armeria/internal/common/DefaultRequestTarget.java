@@ -57,7 +57,7 @@ public final class DefaultRequestTarget implements RequestTarget {
      * other implementations in the ecosystem, e.g. HTTP/JSON to gRPC transcoding. See
      * <a href="https://github.com/googleapis/googleapis/blob/02710fa0ea5312d79d7fb986c9c9823fb41049a9/google/api/http.proto#L257-L258">http.proto</a>.
      */
-    private static final BitSet PATH_MUST_PRESERVE_ENCODING = toBitSet("/?");
+    private static final BitSet PATH_MUST_PRESERVE_ENCODING = toBitSet("/?;");
 
     /**
      * The lookup table for the characters that whose percent encoding must be preserved
@@ -184,7 +184,7 @@ public final class DefaultRequestTarget implements RequestTarget {
     public static RequestTarget createWithoutValidation(
             RequestTargetForm form, @Nullable String scheme, @Nullable String authority,
             String path, @Nullable String query, @Nullable String fragment) {
-        return new DefaultRequestTarget(form, scheme, authority, path, query, fragment);
+        return new DefaultRequestTarget(form, scheme, authority, path, null, query, fragment);
     }
 
     private final RequestTargetForm form;
@@ -194,13 +194,18 @@ public final class DefaultRequestTarget implements RequestTarget {
     private final String authority;
     private final String path;
     @Nullable
+    private final String pathWithMatrixVariables;
+    @Nullable
     private final String query;
     @Nullable
     private final String fragment;
     private boolean cached;
+    @Nullable
+    private String strVal;
 
     private DefaultRequestTarget(RequestTargetForm form, @Nullable String scheme, @Nullable String authority,
-                                 String path, @Nullable String query, @Nullable String fragment) {
+                                 String path, @Nullable String pathWithMatrixVariables,
+                                 @Nullable String query, @Nullable String fragment) {
 
         assert (scheme != null && authority != null) ||
                (scheme == null && authority == null) : "scheme: " + scheme + ", authority: " + authority;
@@ -209,6 +214,7 @@ public final class DefaultRequestTarget implements RequestTarget {
         this.scheme = scheme;
         this.authority = authority;
         this.path = path;
+        this.pathWithMatrixVariables = pathWithMatrixVariables;
         this.query = query;
         this.fragment = fragment;
     }
@@ -231,6 +237,11 @@ public final class DefaultRequestTarget implements RequestTarget {
     @Override
     public String path() {
         return path;
+    }
+
+    @Override
+    public String pathWithMatrixVariables() {
+        return pathWithMatrixVariables;
     }
 
     @Override
@@ -267,7 +278,8 @@ public final class DefaultRequestTarget implements RequestTarget {
             return this;
         }
 
-        return new DefaultRequestTarget(form, scheme, authority, path, query, fragment);
+        return new DefaultRequestTarget(form, scheme, authority, path, null,
+                                        query, fragment);
     }
 
     @Override
@@ -295,6 +307,13 @@ public final class DefaultRequestTarget implements RequestTarget {
 
     @Override
     public String toString() {
+        if (strVal != null) {
+            return strVal;
+        }
+        return strVal = toString(path);
+    }
+
+    private String toString(String path) {
         try (TemporaryThreadLocals tmp = TemporaryThreadLocals.acquire()) {
             final StringBuilder buf = tmp.stringBuilder();
             if (scheme != null) {
@@ -356,12 +375,40 @@ public final class DefaultRequestTarget implements RequestTarget {
             return null;
         }
 
+        final String encodedPath = encodePathToPercents(path);
+        final String semicolonRemovedPath = removeMatrixVariables(encodedPath);
+
         return new DefaultRequestTarget(RequestTargetForm.ORIGIN,
                                         null,
                                         null,
-                                        encodePathToPercents(path),
+                                        semicolonRemovedPath,
+                                        encodedPath,
                                         encodeQueryToPercents(query),
                                         null);
+    }
+
+    static String removeMatrixVariables(String path) {
+        int semicolonIndex = path.indexOf(';');
+        if (semicolonIndex < 0) {
+            return path;
+        }
+        int subStringStartIndex = 0;
+        try (TemporaryThreadLocals threadLocals = TemporaryThreadLocals.acquire()) {
+            final StringBuilder sb = threadLocals.stringBuilder();
+            for (;;) {
+                sb.append(path, subStringStartIndex, semicolonIndex);
+                final int slashIndex = path.indexOf('/', semicolonIndex + 1);
+                if (slashIndex < 0) {
+                    return sb.toString();
+                }
+                subStringStartIndex = slashIndex;
+                semicolonIndex = path.indexOf(';', subStringStartIndex + 1);
+                if (semicolonIndex < 0) {
+                    sb.append(path, subStringStartIndex, path.length());
+                    return sb.toString();
+                }
+            }
+        }
     }
 
     @Nullable
@@ -396,7 +443,7 @@ public final class DefaultRequestTarget implements RequestTarget {
                                             schemeAndAuthority.getScheme(),
                                             schemeAndAuthority.getRawAuthority(),
                                             "/",
-                                            null,
+                                            null, null,
                                             null);
         }
 
@@ -529,14 +576,14 @@ public final class DefaultRequestTarget implements RequestTarget {
                                             schemeAndAuthority.getScheme(),
                                             schemeAndAuthority.getRawAuthority(),
                                             encodedPath,
-                                            encodedQuery,
+                                            null, encodedQuery,
                                             encodedFragment);
         } else {
             return new DefaultRequestTarget(RequestTargetForm.ORIGIN,
                                             null,
                                             null,
                                             encodedPath,
-                                            encodedQuery,
+                                            null, encodedQuery,
                                             encodedFragment);
         }
     }

@@ -16,6 +16,7 @@
 package com.linecorp.armeria.internal.common;
 
 import static com.google.common.base.Strings.emptyToNull;
+import static com.linecorp.armeria.internal.common.DefaultRequestTarget.removeMatrixVariables;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -342,12 +343,11 @@ class DefaultRequestTargetTest {
         assertAccepted(parse(mode, "/%26?a=1%26a=2&b=3"), "/&", "a=1%26a=2&b=3");
     }
 
-    @ParameterizedTest
-    @EnumSource(Mode.class)
-    void shouldNormalizeSemicolon(Mode mode) {
-        assertAccepted(parse(mode, "/;?a=b;c=d"), "/;", "a=b;c=d");
-        // '%3B' in a query string should never be decoded into ';'.
-        assertAccepted(parse(mode, "/%3b?a=b%3Bc=d"), "/;", "a=b%3Bc=d");
+    @Test
+    void serverShouldRemoveMatrixVariables() {
+        assertAccepted(forServer("/;a=b?c=d;e=f"), "/", "c=d;e=f");
+        // '%3B' should never be decoded into ';'.
+        assertAccepted(forServer("/%3B?a=b%3Bc=d"), "/%3B", "a=b%3Bc=d");
     }
 
     @ParameterizedTest
@@ -363,6 +363,13 @@ class DefaultRequestTargetTest {
         // '%3F' must not be decoded into '?'.
         assertAccepted(forServer("/abc%3F.json?a=%3F"), "/abc%3F.json", "a=%3F");
         assertAccepted(forClient("/abc%3F.json?a=%3F"), "/abc%3F.json", "a=%3F");
+    }
+
+    @Test
+    void shouldReserveSemicolon() {
+        // '%3B' must not be decoded into ';'.
+        assertAccepted(forServer("/abc%3B?a=%3B"), "/abc%3B", "a=%3B");
+        assertAccepted(forClient("/abc%3B?a=%3B"), "/abc%3B", "a=%3B");
     }
 
     @Test
@@ -386,12 +393,12 @@ class DefaultRequestTargetTest {
 
     @Test
     void serverShouldHandleReservedCharacters() {
-        assertAccepted(forServer("/#/:@!$&'()*+,;=?a=/#/:[]@!$&'()*+,;="),
-                       "/%23/:@!$&'()*+,;=",
-                       "a=/%23/:[]@!$&'()*+,;=");
+        assertAccepted(forServer("/#/:@!$&'()*+,=?a=/#/:[]@!$&'()*+,="),
+                       "/%23/:@!$&'()*+,=",
+                       "a=/%23/:[]@!$&'()*+,=");
         assertAccepted(forServer("/%23%2F%3A%40%21%24%26%27%28%29%2A%2B%2C%3B%3D%3F" +
                                  "?a=%23%2F%3A%5B%5D%40%21%24%26%27%28%29%2A%2B%2C%3B%3D%3F"),
-                       "/%23%2F:@!$&'()*+,;=%3F",
+                       "/%23%2F:@!$&'()*+,%3B=%3F",
                        "a=%23%2F%3A%5B%5D%40%21%24%26%27%28%29%2A%2B%2C%3B%3D%3F");
     }
 
@@ -404,9 +411,9 @@ class DefaultRequestTargetTest {
         assertAccepted(forClient("/%23%2F%3A%40%21%24%26%27%28%29%2A%2B%2C%3B%3D%3F" +
                                  "?a=%23%2F%3A%5B%5D%40%21%24%26%27%28%29%2A%2B%2C%3B%3D%3F" +
                                  "#%23%2F%3A%40%21%24%26%27%28%29%2A%2B%2C%3B%3D%3F"),
-                       "/%23%2F:@!$&'()*+,;=%3F",
+                       "/%23%2F:@!$&'()*+,%3B=%3F",
                        "a=%23%2F%3A%5B%5D%40%21%24%26%27%28%29%2A%2B%2C%3B%3D%3F",
-                       "%23%2F:@!$&'()*+,;=%3F");
+                       "%23%2F:@!$&'()*+,%3B=%3F");
     }
 
     @ParameterizedTest
@@ -418,9 +425,9 @@ class DefaultRequestTargetTest {
     @ParameterizedTest
     @EnumSource(Mode.class)
     void shouldHandleSquareBracketsInPath(Mode mode) {
-        assertAccepted(parse(mode, "/@/:[]!$&'()*+,;="), "/@/:%5B%5D!$&'()*+,;=");
+        assertAccepted(parse(mode, "/@/:[]!$&'()*+,="), "/@/:%5B%5D!$&'()*+,=");
         assertAccepted(parse(mode, "/%40%2F%3A%5B%5D%21%24%26%27%28%29%2A%2B%2C%3B%3D%3F"),
-                       "/@%2F:%5B%5D!$&'()*+,;=%3F");
+                       "/@%2F:%5B%5D!$&'()*+,%3B=%3F");
     }
 
     @ParameterizedTest
@@ -494,6 +501,31 @@ class DefaultRequestTargetTest {
             assertThat(forClient("/?a=b#c=d")).asString().isEqualTo("/?a=b#c=d");
             assertThat(forClient("http://foo/bar?a=b#c=d")).asString().isEqualTo("http://foo/bar?a=b#c=d");
         }
+    }
+
+    @Test
+    void testRemoveMatrixVariables() {
+        assertThat(removeMatrixVariables("/foo")).isEqualTo("/foo");
+        assertThat(removeMatrixVariables("/foo;")).isEqualTo("/foo");
+        assertThat(removeMatrixVariables("/foo/")).isEqualTo("/foo/");
+        assertThat(removeMatrixVariables("/foo/bar")).isEqualTo("/foo/bar");
+        assertThat(removeMatrixVariables("/foo/bar;")).isEqualTo("/foo/bar");
+        assertThat(removeMatrixVariables("/foo/bar/")).isEqualTo("/foo/bar/");
+        assertThat(removeMatrixVariables("/foo;/bar")).isEqualTo("/foo/bar");
+        assertThat(removeMatrixVariables("/foo;/bar;")).isEqualTo("/foo/bar");
+        assertThat(removeMatrixVariables("/foo;/bar/")).isEqualTo("/foo/bar/");
+        assertThat(removeMatrixVariables("/foo;a=b/bar")).isEqualTo("/foo/bar");
+        assertThat(removeMatrixVariables("/foo;a=b/bar;")).isEqualTo("/foo/bar");
+        assertThat(removeMatrixVariables("/foo;a=b/bar/")).isEqualTo("/foo/bar/");
+        assertThat(removeMatrixVariables("/foo;a=b/bar/baz")).isEqualTo("/foo/bar/baz");
+        assertThat(removeMatrixVariables("/foo;a=b/bar/baz;")).isEqualTo("/foo/bar/baz");
+        assertThat(removeMatrixVariables("/foo;a=b/bar/baz/")).isEqualTo("/foo/bar/baz/");
+        assertThat(removeMatrixVariables("/foo;a=b/bar;/baz")).isEqualTo("/foo/bar/baz");
+        assertThat(removeMatrixVariables("/foo;a=b/bar;/baz;")).isEqualTo("/foo/bar/baz");
+        assertThat(removeMatrixVariables("/foo;a=b/bar;/baz/")).isEqualTo("/foo/bar/baz/");
+        assertThat(removeMatrixVariables("/foo;a=b/bar;c=d/baz")).isEqualTo("/foo/bar/baz");
+        assertThat(removeMatrixVariables("/foo;a=b/bar;c=d/baz;")).isEqualTo("/foo/bar/baz");
+        assertThat(removeMatrixVariables("/foo;a=b/bar;c=d/baz/")).isEqualTo("/foo/bar/baz/");
     }
 
     private static void assertAccepted(@Nullable RequestTarget res, String expectedPath) {
