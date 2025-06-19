@@ -668,6 +668,13 @@ public abstract class AbstractServerCall<I, O> extends ServerCall<I, O> {
     }
 
     @Override
+    public String getAuthority() {
+        final String authority = req.authority();
+        assert authority != null;
+        return authority;
+    }
+
+    @Override
     public final MethodDescriptor<I, O> getMethodDescriptor() {
         return method;
     }
