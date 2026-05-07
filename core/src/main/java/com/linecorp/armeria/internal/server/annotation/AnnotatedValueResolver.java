@@ -41,7 +41,9 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,6 +63,8 @@ import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.google.common.base.Ascii;
 import com.google.common.base.MoreObjects;
@@ -86,6 +90,7 @@ import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.common.multipart.Multipart;
 import com.linecorp.armeria.common.multipart.MultipartFile;
 import com.linecorp.armeria.common.util.Exceptions;
+import com.linecorp.armeria.internal.common.JacksonUtil;
 import com.linecorp.armeria.internal.server.FileAggregatedMultipart;
 import com.linecorp.armeria.internal.server.annotation.AnnotatedBeanFactoryRegistry.BeanFactoryId;
 import com.linecorp.armeria.server.ServiceRequestContext;
@@ -128,6 +133,8 @@ final class AnnotatedValueResolver {
     private static final Object[] emptyArguments = new Object[0];
 
     private static final List<RequestObjectResolver> defaultRequestObjectResolvers;
+
+    private static final ObjectMapper defaultObjectMapper = JacksonUtil.newDefaultObjectMapper();
 
     private static final Set<Type> fileTypes = ImmutableSet.of(File.class, Path.class, MultipartFile.class);
 
@@ -491,9 +498,13 @@ final class AnnotatedValueResolver {
             }
             if (pathParams.contains(name)) {
                 return ofPathVariable(name, annotatedElement, typeElement, type, description);
-            } else {
-                return ofQueryParam(name, annotatedElement, typeElement, type, description, queryDelimiter);
             }
+            if (!Collection.class.isAssignableFrom(type) &&
+                type != Optional.class &&
+                !AnnotatedServiceTypeUtil.isStringConvertible(type)) {
+                return ofJsonParam(name, annotatedElement, typeElement, type, description);
+            }
+            return ofQueryParam(name, annotatedElement, typeElement, type, description, queryDelimiter);
         }
 
         final Header header = annotatedElement.getAnnotation(Header.class);
@@ -711,6 +722,70 @@ final class AnnotatedValueResolver {
                 .aggregation(AggregationStrategy.ALWAYS)
                 .resolver(fileResolver())
                 .build();
+    }
+
+    private static AnnotatedValueResolver ofJsonParam(String name,
+                                                     AnnotatedElement annotatedElement,
+                                                     AnnotatedElement typeElement, Class<?> type,
+                                                     DescriptionInfo description) {
+        return new Builder(annotatedElement, type, name)
+                .annotationType(Param.class)
+                .typeElement(typeElement)
+                .supportDefault(true)
+                .description(description)
+                .aggregation(AggregationStrategy.FOR_FORM_DATA)
+                .resolver(jsonParamResolver())
+                .build();
+    }
+
+    private static BiFunction<AnnotatedValueResolver, ResolverContext, Object> jsonParamResolver() {
+        return (resolver, ctx) -> {
+            final String name = resolver.httpElementName();
+            final Class<?> targetType = resolver.elementType();
+
+            // Case 1: Check files (parts WITH filename, e.g. Blob in FormData)
+            final FileAggregatedMultipart multipart = ctx.aggregatedMultipart();
+            if (multipart != null) {
+                final List<MultipartFile> files = multipart.files().get(name);
+                if (files != null && !files.isEmpty()) {
+                    final MultipartFile file = files.get(0);
+                    final MediaType contentType = file.headers().contentType();
+                    if (contentType != null && contentType.isJson()) {
+                        try {
+                            final byte[] content = Files.readAllBytes(file.path());
+                            return defaultObjectMapper.readValue(content, targetType);
+                        } catch (IOException e) {
+                            throw new IllegalArgumentException(
+                                    "Failed to deserialize a JSON multipart file parameter: " + name, e);
+                        }
+                    }
+                }
+
+                // Case 2: Check params (parts WITHOUT filename)
+                final List<String> params = multipart.params().get(name);
+                if (params != null && !params.isEmpty()) {
+                    try {
+                        return defaultObjectMapper.readValue(params.get(0), targetType);
+                    } catch (IOException e) {
+                        throw new IllegalArgumentException(
+                                "Failed to deserialize a JSON multipart parameter: " + name, e);
+                    }
+                }
+            }
+
+            // Case 3: Check query params (non-multipart form data)
+            final List<String> queryValues = ctx.queryParams().getAll(name);
+            if (!queryValues.isEmpty()) {
+                try {
+                    return defaultObjectMapper.readValue(queryValues.get(0), targetType);
+                } catch (IOException e) {
+                    throw new IllegalArgumentException(
+                            "Failed to deserialize a JSON parameter: " + name, e);
+                }
+            }
+
+            return resolver.defaultOrException();
+        };
     }
 
     private static AnnotatedValueResolver ofHeader(String name,

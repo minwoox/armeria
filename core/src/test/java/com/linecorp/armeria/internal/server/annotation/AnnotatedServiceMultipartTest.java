@@ -211,6 +211,64 @@ class AnnotatedServiceMultipartTest {
         assertThat(response.contentUtf8()).contains("No closing MIME boundary");
     }
 
+    @Test
+    void testJsonParamWithFilename() {
+        // Simulates FormData.append("data", new Blob([JSON], { type: "application/json" }))
+        // which results in filename="blob" and Content-Type: application/json
+        final Multipart multipart = Multipart.of(
+                BodyPart.of(ContentDisposition.of("form-data", "data", "blob"),
+                            MediaType.JSON, "{\"name\":\"test\",\"value\":42}")
+        );
+        final AggregatedHttpResponse response =
+                server.blockingWebClient().execute(multipart.toHttpRequest("/uploadJsonParam"));
+        assertThat(response.status()).isEqualTo(HttpStatus.OK);
+        assertThatJson(response.contentUtf8())
+                .isEqualTo("{\"name\":\"test\",\"value\":42}");
+    }
+
+    @Test
+    void testJsonParamWithCustomFilename() {
+        // Simulates FormData.append("data", blob, "data.json")
+        final Multipart multipart = Multipart.of(
+                BodyPart.of(ContentDisposition.of("form-data", "data", "data.json"),
+                            MediaType.JSON, "{\"name\":\"hello\",\"value\":99}")
+        );
+        final AggregatedHttpResponse response =
+                server.blockingWebClient().execute(multipart.toHttpRequest("/uploadJsonParam"));
+        assertThat(response.status()).isEqualTo(HttpStatus.OK);
+        assertThatJson(response.contentUtf8())
+                .isEqualTo("{\"name\":\"hello\",\"value\":99}");
+    }
+
+    @Test
+    void testJsonParamWithoutFilename() {
+        // Simulates FormData.append("data", JSON.stringify(...)) — no filename, no content-type
+        final Multipart multipart = Multipart.of(
+                BodyPart.of(ContentDisposition.of("form-data", "data"),
+                            "{\"name\":\"nofile\",\"value\":7}")
+        );
+        final AggregatedHttpResponse response =
+                server.blockingWebClient().execute(multipart.toHttpRequest("/uploadJsonParam"));
+        assertThat(response.status()).isEqualTo(HttpStatus.OK);
+        assertThatJson(response.contentUtf8())
+                .isEqualTo("{\"name\":\"nofile\",\"value\":7}");
+    }
+
+    @Test
+    void testJsonParamWithFileUpload() {
+        // JSON param + regular file upload in the same request
+        final Multipart multipart = Multipart.of(
+                BodyPart.of(ContentDisposition.of("form-data", "data", "blob"),
+                            MediaType.JSON, "{\"name\":\"mixed\",\"value\":123}"),
+                BodyPart.of(ContentDisposition.of("form-data", "file1", "test.txt"), "file-content")
+        );
+        final AggregatedHttpResponse response =
+                server.blockingWebClient().execute(multipart.toHttpRequest("/uploadJsonParamWithFile"));
+        assertThat(response.status()).isEqualTo(HttpStatus.OK);
+        assertThatJson(response.contentUtf8())
+                .isEqualTo("{\"name\":\"mixed\",\"value\":123,\"file\":\"file-content\"}");
+    }
+
     @Consumes(MediaTypeNames.MULTIPART_FORM_DATA)
     private static class MyAnnotatedService {
         @Blocking
@@ -339,6 +397,44 @@ class AnnotatedServiceMultipartTest {
                     ImmutableMap.of("files", fileData,
                                     "params", params);
             return HttpResponse.ofJson(content);
+        }
+
+        @Blocking
+        @Post
+        @Path("/uploadJsonParam")
+        public HttpResponse uploadJsonParam(@Param MyData data) {
+            return HttpResponse.ofJson(ImmutableMap.of("name", data.name, "value", data.value));
+        }
+
+        @Blocking
+        @Post
+        @Path("/uploadJsonParamWithFile")
+        public HttpResponse uploadJsonParamWithFile(@Param MyData data,
+                                                    @Param MultipartFile file1) throws IOException {
+            final String fileContent = Files.asCharSource(file1.file(), StandardCharsets.UTF_8).read();
+            return HttpResponse.ofJson(ImmutableMap.of("name", data.name, "value", data.value,
+                                                       "file", fileContent));
+        }
+    }
+
+    static class MyData {
+        private String name;
+        private int value;
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public void setValue(int value) {
+            this.value = value;
         }
     }
 }

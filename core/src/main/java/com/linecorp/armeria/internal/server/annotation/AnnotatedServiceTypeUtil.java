@@ -189,5 +189,18 @@ final class AnnotatedServiceTypeUtil {
                 "Can't convert '" + str + "' to type '" + clazz.getSimpleName() + "'.");
     }
 
+    /**
+     * Returns {@code true} if the given {@code clazz} can be converted from a {@link String}.
+     */
+    static boolean isStringConvertible(Class<?> clazz) {
+        if (clazz.isEnum()) {
+            return true;
+        }
+        if (supportedElementTypes.containsKey(clazz)) {
+            return true;
+        }
+        return convertExternalTypes.get(clazz) != null;
+    }
+
     private AnnotatedServiceTypeUtil() {}
 }
